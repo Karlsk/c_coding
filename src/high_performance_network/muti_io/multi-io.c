@@ -10,14 +10,16 @@
 
 #include <pthread.h>
 #include <sys/select.h>
+#include <sys/poll.h>
 
 #define TCP_PORT 9999 
 #define ENABLE_NOBLOCK 0
 #define ENABLE_MUTITHREAD 0
-#define ENABLE_SELECT 1
-
+#define ENABLE_SELECT 0
+#define ENABLE_POLL 1
 
 #define BUFFER_LEN 1024 
+#define POLL_SIZE 1024 
 
 // 1 con 1 thread
 void *client_thread(void *arg)
@@ -120,6 +122,47 @@ int main(int argc, char const *argv[])
         }
         
 
+    }
+#elif ENABLE_POLL
+    // int poll(struct pollfd *fds, nfds_t nfds, int timeout);
+    struct pollfd fds[POLL_SIZE] = {0};
+    fds[sockfd].fd = sockfd;
+    fds[sockfd].events = POLLIN;
+    
+    int maxfd = sockfd;
+    int clientfd = 0;
+    while(1) {
+        int nready =  poll(fds, maxfd+1, -1);
+        if (fds[sockfd].revents & POLLIN)
+        {
+            clientfd = accept(sockfd, (struct sockaddr *)&clientaddr, &len);
+            printf("clientfd: %d\n", clientfd);
+            fds[clientfd].fd = clientfd;
+            fds[clientfd].events = POLLIN;
+            if (clientfd > maxfd) {
+                maxfd = clientfd;
+            }
+            if (--nready == 0) continue;
+        }
+        int i = 0;
+        for ( i = sockfd; i <= maxfd+1; i++)
+        {
+            if (fds[i].revents & POLLIN)
+            {
+                char buffer[BUFFER_LEN] = {0};
+                int ret = recv(i, buffer, BUFFER_LEN, 0);
+                if (ret == 0)
+                {
+                    fds[i].fd = -1;
+                    fds[i].events = 0;
+                    close(i);
+                    break;
+                }
+                printf("ret: %d, bufer: %s\n", ret, buffer);
+                send(i, buffer, ret, 0);
+            }
+        }
+        
     }
 #endif
     
